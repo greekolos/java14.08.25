@@ -1,0 +1,39 @@
+# -------------------------
+# Общие текстовые файлы — LF
+# -------------------------
+*.md         text eol=lf
+*.txt        text eol=lf
+*.gitignore  text eol=lf
+
+# -------------------------
+# GitHub Actions workflows — LF
+# -------------------------
+*.yml        text eol=lf
+*.yaml       text eol=lf
+
+# -------------------------
+# Java код и Maven конфигурации — LF
+# -------------------------
+*.java       text eol=lf
+src/test/java/**/*.java text eol=lf
+*.xml        text eol=lf
+pom.xml      text eol=lf
+
+# -------------------------
+# Скрипты
+# -------------------------
+*.sh         text eol=lf
+*.bat        text eol=crlf
+
+# -------------------------
+# Бинарные и медиафайлы — не трогать
+# -------------------------
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.pdf        binary
+*.zip        binary
+*.jar        binary
+*.class      binary
