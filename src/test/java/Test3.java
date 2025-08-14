@@ -8,7 +8,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 
-public class Test2 {
+public class Test3 {
     private WebDriver driver;
 
     @BeforeEach
