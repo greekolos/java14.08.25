@@ -1,18 +1,37 @@
 name: Java CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Test run mode'
+        required: true
+        default: 'new_or_changes'
+        type: choice
+        options:
+          - all
+          - path
+          - new
+          - changes
+          - new_or_changes
+      test_path:
+        description: 'Test file or folder path (only for mode=path)'
+        required: false
+        default: ''
+
   push:
-    branches: [ "master" ]
+    branches: [ master ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -22,8 +41,10 @@ jobs:
 
       - name: Install Google Chrome
         run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg2
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
@@ -35,5 +56,100 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven
 
-      - name: Build and run tests
-        run: mvn clean test
+      - name: Detect changed and new test files
+        id: collect
+        shell: bash
+        run: |
+          echo "🔁 Detecting changed files..."
+          
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            echo "Pull request detected, base ref: $BASE_REF"
+            git fetch origin "$BASE_REF"
+            DIFF_BASE="origin/$BASE_REF"
+          else
+            echo "Push event detected"
+            DIFF_BASE="HEAD^"
+          fi
+          
+          MODIFIED=$(git diff --name-only --diff-filter=M $DIFF_BASE HEAD | grep '^src/test/java/.*\.java$' || true)
+          NEW=$(git diff --name-only --diff-filter=A $DIFF_BASE HEAD | grep '^src/test/java/.*\.java$' || true)
+          COMBINED=$(echo -e "$MODIFIED\n$NEW" | sort -u)
+          
+          MODIFIED_TESTS=$(echo "$MODIFIED" | tr '\n' ' ' | xargs)
+          NEW_TESTS=$(echo "$NEW" | tr '\n' ' ' | xargs)
+          COMBINED_TESTS=$(echo "$COMBINED" | tr '\n' ' ' | xargs)
+          
+          echo "MODIFIED_TESTS=$MODIFIED_TESTS" >> $GITHUB_OUTPUT
+          echo "NEW_TESTS=$NEW_TESTS" >> $GITHUB_OUTPUT
+          echo "COMBINED_TESTS=$COMBINED_TESTS" >> $GITHUB_OUTPUT
+
+      - name: Run tests
+        shell: bash
+        run: |
+          input_mode="${{ github.event.inputs.mode }}"
+          input_path="${{ github.event.inputs.test_path }}"
+          mode="${input_mode:-new_or_changes}"
+          path="${input_path:-}"
+          
+          new_tests="${{ steps.collect.outputs.NEW_TESTS }}"
+          modified_tests="${{ steps.collect.outputs.MODIFIED_TESTS }}"
+          combined_tests="${{ steps.collect.outputs.COMBINED_TESTS }}"
+          
+          echo "▶ Mode: $mode"
+          echo "▶ Path: $path"
+          echo "▶ New tests: '$new_tests'"
+          echo "▶ Modified tests: '$modified_tests'"
+          echo "▶ Combined tests: '$combined_tests'"
+          
+          case "$mode" in
+            all)
+              echo "🧪 Running all tests..."
+              mvn clean test
+              ;;
+            path)
+              if [ -z "$path" ]; then
+                echo "❌ Error: test_path is required when mode=path"
+                exit 1
+              fi
+              echo "🧪 Running tests at: $path"
+              # Запуск конкретного теста через Maven - нужно указать класс или пакет
+              mvn -Dtest="$path" test
+              ;;
+            new)
+              if [ -z "$new_tests" ]; then
+                echo "⚠ No new test files found. Skipping tests."
+                exit 0
+              fi
+              echo "🧪 Running new tests:"
+              echo "$new_tests"
+              # Преобразуем пути файлов в формат Maven -Dtest параметра (имена классов)
+              tests=$(echo $new_tests | sed -E 's|src/test/java/||; s|/|.|g; s|\.java||g')
+              mvn -Dtest="$tests" test
+              ;;
+            changes)
+              if [ -z "$modified_tests" ]; then
+                echo "⚠ No modified test files found. Skipping tests."
+                exit 0
+              fi
+              echo "🧪 Running changed tests:"
+              echo "$modified_tests"
+              tests=$(echo $modified_tests | sed -E 's|src/test/java/||; s|/|.|g; s|\.java||g')
+              mvn -Dtest="$tests" test
+              ;;
+            new_or_changes)
+              if [ -z "$combined_tests" ]; then
+                echo "⚠ No new or modified test files found. Skipping tests."
+                exit 0
+              fi
+              echo "🧪 Running new and changed tests:"
+              echo "$combined_tests"
+              tests=$(echo $combined_tests | sed -E 's|src/test/java/||; s|/|.|g; s|\.java||g')
+              mvn -Dtest="$tests" test
+              ;;
+            *)
+              echo "❌ Invalid mode: $mode"
+              exit 1
+              ;;
+          esac
+
