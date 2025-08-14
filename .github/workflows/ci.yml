@@ -72,8 +72,8 @@ jobs:
             DIFF_BASE="HEAD^"
           fi
           
-          MODIFIED=$(git diff --name-only --diff-filter=M $DIFF_BASE HEAD | grep '^src/test/java/.*\.java$' || true)
-          NEW=$(git diff --name-only --diff-filter=A $DIFF_BASE HEAD | grep '^src/test/java/.*\.java$' || true)
+          MODIFIED=$(git diff --name-only --diff-filter=MR $DIFF_BASE HEAD | grep '^src/test/java/.*\.java$' || true)
+          NEW=$(git diff --name-only --diff-filter=AR $DIFF_BASE HEAD | grep '^src/test/java/.*\.java$' || true)
           COMBINED=$(echo -e "$MODIFIED\n$NEW" | sort -u)
           
           MODIFIED_TESTS=$(echo "$MODIFIED" | tr '\n' ' ' | xargs)
